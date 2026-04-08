@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""
+calc_ratio.py - Calculate allele frequency (SNP-index) for each site and
+                filter candidate variants using delta-SNP-index.
+
+BSA-Seq strategy: compare short-root pool vs long-root pool.
+  delta-SNP-index = short_ratio - long_ratio
+  Sites where |delta-SNP-index| exceeds the threshold are retained as candidates.
+"""
+
+import argparse
+import gzip
+import os
+import sys
+import pandas as pd
+
+parser = argparse.ArgumentParser(
+    description="Calculate BSA-Seq SNP-index and filter candidate variants"
+)
+parser.add_argument("--vcf",    required=True, help="Input VCF file (can be .gz compressed)")
+parser.add_argument("--chr",    required=True, help="Target chromosome (e.g. 1 or Chr1)")
+parser.add_argument("--start",  type=int, required=True, help="Region start position")
+parser.add_argument("--end",    type=int, required=True, help="Region end position")
+parser.add_argument("--delta",  type=float, default=0.3,
+                    help="Delta-SNP-index threshold (|short_ratio - long_ratio| > this value), default 0.3")
+parser.add_argument("--min_dp", type=int, default=10,
+                    help="Minimum sequencing depth filter (must be >= 1), default 10")
+parser.add_argument("--outdir", default="./result", help="Output directory")
+args = parser.parse_args()
+
+if args.min_dp < 1:
+    print("[ERROR] --min_dp must be at least 1 to prevent division by zero.")
+    sys.exit(1)
+
+os.makedirs(args.outdir, exist_ok=True)
+
+
+def normalize_chrom(chrom):
+    """Normalize chromosome name to support Chr1 / chr1 / 1 formats."""
+    chrom = str(chrom).strip()
+    if chrom.lower().startswith('chr'):
+        chrom = chrom[3:]
+    return chrom
+
+
+target_chrom = normalize_chrom(args.chr)
+
+records = []
+opener = gzip.open if args.vcf.endswith(".gz") else open
+
+with opener(args.vcf, "rt") as f:
+    samples = []
+    for line in f:
+        if line.startswith("##"):
+            continue
+        if line.startswith("#CHROM"):
+            headers = line.strip().split("\t")
+            samples = headers[9:]  # Expected order: short, long
+            continue
+
+        cols = line.strip().split("\t")
+        if len(cols) < 10:
+            continue
+
+        chrom, pos, _, ref, alt = cols[0], int(cols[1]), cols[2], cols[3], cols[4]
+
+        if ',' in alt:
+            continue
+
+        filter_val = cols[6] if len(cols) > 6 else 'PASS'
+        if filter_val not in ('PASS', '.'):
+            continue
+
+        fmt = cols[8].split(":")
+        if "AD" not in fmt:
+            continue
+        ad_idx = fmt.index("AD")
+
+        row = {"CHROM": chrom, "POS": pos, "REF": ref, "ALT": alt}
+        valid = True
+        for i, sname in enumerate(samples):
+            sdata = cols[9 + i].split(":")
+            if sdata[0] in ("./.", "."):
+                valid = False
+                break
+            ad_str = sdata[ad_idx] if ad_idx < len(sdata) else "."
+            if ad_str == "." or "." in ad_str.split(","):
+                valid = False
+                break
+            ad = list(map(int, ad_str.split(",")))
+            total = sum(ad)
+            if total == 0 or total < args.min_dp:
+                valid = False
+                break
+            row[f"{sname}_ratio"] = round(ad[1] / total, 4)
+            row[f"{sname}_dp"]    = total
+
+        if valid:
+            records.append(row)
+
+df = pd.DataFrame(records)
+
+if df.empty:
+    print("WARNING: No valid variant sites found. "
+          "Check your VCF file, filter settings, and --min_dp threshold.")
+    df.to_csv(f"{args.outdir}/all_variants_ratio.csv", index=False)
+    df.to_csv(f"{args.outdir}/candidate_mutations.csv", index=False)
+    sys.exit(0)
+
+df.to_csv(f"{args.outdir}/all_variants_ratio.csv", index=False)
+print(f"Total valid variant sites: {len(df)}")
+
+if "short_ratio" not in df.columns or "long_ratio" not in df.columns:
+    print("WARNING: 'short_ratio' or 'long_ratio' column not found. "
+          "Check that VCF sample order is: short pool first, long pool second.")
+else:
+    df["delta_index"] = df["short_ratio"] - df["long_ratio"]
+
+    mask = (
+        (df["CHROM"].apply(normalize_chrom) == target_chrom) &
+        (df["POS"] >= args.start) &
+        (df["POS"] <= args.end) &
+        (df["delta_index"].abs() > args.delta)
+    )
+
+    candidates = df[mask].sort_values("delta_index", key=lambda x: x.abs(), ascending=False)
+    candidates.to_csv(f"{args.outdir}/candidate_mutations.csv", index=False)
+    print(
+        f"Candidate variant sites "
+        f"({args.chr}:{args.start}-{args.end}, |delta-SNP-index| > {args.delta}): "
+        f"{len(candidates)}"
+    )
