@@ -3,8 +3,8 @@
 calc_ratio.py - Calculate allele frequency (SNP-index) for each site and
                 filter candidate variants using delta-SNP-index.
 
-BSA-Seq strategy: compare short-root pool vs long-root pool.
-  delta-SNP-index = short_ratio - long_ratio
+BSA-Seq strategy: compare mutant pool (mut) vs wild-type pool (wt).
+  delta-SNP-index = mut_ratio - wt_ratio
   Sites where |delta-SNP-index| exceeds the threshold are retained as candidates.
 """
 
@@ -22,7 +22,7 @@ parser.add_argument("--chr",    required=True, help="Target chromosome (e.g. 1 o
 parser.add_argument("--start",  type=int, required=True, help="Region start position")
 parser.add_argument("--end",    type=int, required=True, help="Region end position")
 parser.add_argument("--delta",  type=float, default=0.3,
-                    help="Delta-SNP-index threshold (|short_ratio - long_ratio| > this value), default 0.3")
+                    help="Delta-SNP-index threshold (|mut_ratio - wt_ratio| > this value), default 0.3")
 parser.add_argument("--min_dp", type=int, default=10,
                     help="Minimum sequencing depth filter (must be >= 1), default 10")
 parser.add_argument("--outdir", default="./result", help="Output directory")
@@ -55,7 +55,7 @@ with opener(args.vcf, "rt") as f:
             continue
         if line.startswith("#CHROM"):
             headers = line.strip().split("\t")
-            samples = headers[9:]  # Expected order: short, long
+            samples = headers[9:]  # Expected order: mut, wt
             continue
 
         cols = line.strip().split("\t")
@@ -110,11 +110,11 @@ if df.empty:
 df.to_csv(f"{args.outdir}/all_variants_ratio.csv", index=False)
 print(f"Total valid variant sites: {len(df)}")
 
-if "short_ratio" not in df.columns or "long_ratio" not in df.columns:
-    print("WARNING: 'short_ratio' or 'long_ratio' column not found. "
-          "Check that VCF sample order is: short pool first, long pool second.")
+if "mut_ratio" not in df.columns or "wt_ratio" not in df.columns:
+    print("WARNING: 'mut_ratio' or 'wt_ratio' column not found. "
+          "Check that VCF sample order is: mut pool first, wt pool second.")
 else:
-    df["delta_index"] = df["short_ratio"] - df["long_ratio"]
+    df["delta_index"] = df["mut_ratio"] - df["wt_ratio"]
 
     mask = (
         (df["CHROM"].apply(normalize_chrom) == target_chrom) &

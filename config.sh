@@ -8,10 +8,10 @@ REF="./Arabidopsis_thaliana.TAIR10.dna.toplevel.fa"
 KNOWN_VCF=""
 
 # Input FASTQ files
-SHORT_R1=""
-SHORT_R2=""
-LONG_R1=""
-LONG_R2=""
+MUT_R1=""
+MUT_R2=""
+WT_R1=""
+WT_R2=""
 
 # Fine-mapping interval
 FINE_CHR="1"

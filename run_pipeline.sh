@@ -13,7 +13,7 @@ fi
 source config.sh
 
 # ---- Validate required config variables ----
-for var in SHORT_R1 SHORT_R2 LONG_R1 LONG_R2; do
+for var in MUT_R1 MUT_R2 WT_R1 WT_R2; do
     if [[ -z "${!var}" ]]; then
         echo "[ERROR] ${var} is not set in config.sh. Please fill in your FASTQ file paths."
         exit 1
@@ -25,8 +25,8 @@ LOG="${OUTDIR}/pipeline.log"
 exec > >(tee -a "${LOG}") 2>&1
 
 echo "====== [$(date)] Pipeline started ======"
-echo "  Short-root pool: ${SHORT_R1}"
-echo "  Long-root pool:  ${LONG_R1}"
+echo "  Mutant pool: ${MUT_R1}"
+echo "  WT pool:     ${WT_R1}"
 echo "  Target region:   ${FINE_CHR}:${FINE_START}-${FINE_END}"
 echo ""
 
@@ -53,15 +53,15 @@ fi
 
 # ---- Step 1: Quality control ----
 echo "[Step 1] Quality control with Trimmomatic..."
-for SAMPLE in short long; do
+for SAMPLE in mut wt; do
     R1="${OUTDIR}/qc/${SAMPLE}_1.fq.gz"
     R2="${OUTDIR}/qc/${SAMPLE}_2.fq.gz"
     UNPAIRED_R1="${OUTDIR}/qc/${SAMPLE}_1_unpaired.fq.gz"
     UNPAIRED_R2="${OUTDIR}/qc/${SAMPLE}_2_unpaired.fq.gz"
-    if [[ ${SAMPLE} == "short" ]]; then
-        IN1=${SHORT_R1}; IN2=${SHORT_R2}
+    if [[ ${SAMPLE} == "mut" ]]; then
+        IN1=${MUT_R1}; IN2=${MUT_R2}
     else
-        IN1=${LONG_R1};  IN2=${LONG_R2}
+        IN1=${WT_R1};  IN2=${WT_R2}
     fi
     trimmomatic PE -threads ${THREADS} ${IN1} ${IN2} \
         ${R1} ${UNPAIRED_R1} ${R2} ${UNPAIRED_R2} \
@@ -78,7 +78,7 @@ if [[ ! -f "${REF}.bwt" ]]; then
 else
     echo "  OK: BWA index already exists"
 fi
-for SAMPLE in short long; do
+for SAMPLE in mut wt; do
     R1="${OUTDIR}/qc/${SAMPLE}_1.fq.gz"
     R2="${OUTDIR}/qc/${SAMPLE}_2.fq.gz"
     bwa mem -t ${THREADS} \
@@ -90,7 +90,7 @@ done
 
 # ---- Step 3: Mark duplicates + BQSR ----
 echo "[Step 3] MarkDuplicates + BQSR..."
-for SAMPLE in short long; do
+for SAMPLE in mut wt; do
     BAM="${OUTDIR}/bam/${SAMPLE}_sorted.bam"
     MKDUP="${OUTDIR}/bam/${SAMPLE}_markdup.bam"
     RECAL="${OUTDIR}/bam/${SAMPLE}_recal.bam"
@@ -116,7 +116,7 @@ done
 
 # ---- Step 4: HaplotypeCaller ----
 echo "[Step 4] Calling SNPs/Indels (HaplotypeCaller)..."
-for SAMPLE in short long; do
+for SAMPLE in mut wt; do
     gatk HaplotypeCaller -R "${REF}" \
         -I "${OUTDIR}/bam/${SAMPLE}_recal.bam" \
         -O "${OUTDIR}/vcf/${SAMPLE}.g.vcf.gz" \
@@ -124,8 +124,8 @@ for SAMPLE in short long; do
 done
 
 gatk CombineGVCFs -R "${REF}" \
-    -V "${OUTDIR}/vcf/short.g.vcf.gz" \
-    -V "${OUTDIR}/vcf/long.g.vcf.gz" \
+    -V "${OUTDIR}/vcf/mut.g.vcf.gz" \
+    -V "${OUTDIR}/vcf/wt.g.vcf.gz" \
     -O "${OUTDIR}/vcf/combined.g.vcf.gz"
 
 gatk GenotypeGVCFs -R "${REF}" \

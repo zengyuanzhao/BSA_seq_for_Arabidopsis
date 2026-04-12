@@ -1,7 +1,7 @@
-# BSA-seq for Arabidopsis (Short-root Mutant Mapping)
+# BSA-seq for Arabidopsis (Mutant Mapping)
 
-A BSA-seq (Bulked Segregant Analysis) fine-mapping pipeline for *Arabidopsis thaliana* **short-root mutants**.
-This pipeline compares a **short-root pool** (mutant phenotype) against a **long-root pool** (wild-type phenotype) to identify candidate causal mutations.
+A BSA-seq (Bulked Segregant Analysis) fine-mapping pipeline for *Arabidopsis thaliana* **mutants**.
+This pipeline compares a **mutant pool** (mut) against a **wild-type pool** (wt) to identify candidate causal mutations.
 
 Designed for users without a bioinformatics background — one command gets you from raw FASTQ to a candidate mutation list.
 
@@ -9,15 +9,15 @@ Designed for users without a bioinformatics background — one command gets you 
 
 ## How It Works
 
-In a BSA-seq experiment for short-root mapping:
+In a BSA-seq experiment:
 
-- **Short-root pool** — plants with the short-root phenotype (enriched for the causal allele)
-- **Long-root pool** — plants with normal/long-root phenotype (wild-type allele)
+- **Mutant pool (mut)** — plants with the mutant phenotype (enriched for the causal allele)
+- **Wild-type pool (wt)** — plants with wild-type phenotype (wild-type allele)
 
 The pipeline calculates a **Δ(delta)-SNP-index** at each variant site:
 
 ```
-ΔSNP-index = SNP-index(short-root pool) − SNP-index(long-root pool)
+ΔSNP-index = SNP-index(mut pool) − SNP-index(wt pool)
 ```
 
 Sites with a high Δ SNP-index (close to 1.0) in the candidate region are likely linked to the causal mutation.
@@ -27,7 +27,7 @@ Sites with a high Δ SNP-index (close to 1.0) in the candidate region are likely
 ## Pipeline Overview
 
 ```
-Raw FASTQ (short-root pool + long-root pool)
+Raw FASTQ (mut pool + wt pool)
     │
     ├─ Step 1: Quality control (Trimmomatic)
     ├─ Step 2: Alignment to TAIR10 (BWA-MEM)
@@ -49,10 +49,10 @@ Two things must be prepared **manually** before running any script:
 
 ```
 RawData/
-├── short_root_pool/       ← short-root phenotype sequencing data
+├── mut_pool/       ← mutant phenotype sequencing data
 │   ├── sample_1.fq.gz
 │   └── sample_2.fq.gz
-└── long_root_pool/        ← long-root (wild-type) sequencing data
+└── wt_pool/        ← wild-type sequencing data
     ├── sample_1.fq.gz
     └── sample_2.fq.gz
 ```
@@ -82,7 +82,7 @@ The script will:
 1. Automatically install conda/micromamba (if not present)
 2. Create the `BSA_seq` environment and install all required tools
 3. Download the snpEff Arabidopsis database
-4. Prompt you to **select your short-root and long-root pool folders**
+4. Prompt you to **select your mutant and wild-type pool folders**
 5. Prompt you to **enter the candidate chromosomal interval** (e.g. Chr1: 10,000,000 – 15,000,000)
 6. Launch the full pipeline in the background
 
@@ -101,15 +101,15 @@ bash quick_start.sh
 When `setup_and_run.sh` reaches the data setup step, it will show:
 
 ```
-[INFO] Select the short-root pool folder:
-1) short_root_pool
-2) long_root_pool
+[INFO] Select the mutant pool folder:
+1) mut_pool
+2) wt_pool
 3) Enter manually
 #?          ← type 1 and press Enter
 
-[INFO] Select the long-root pool folder:
-1) short_root_pool
-2) long_root_pool
+[INFO] Select the wild-type pool folder:
+1) mut_pool
+2) wt_pool
 3) Enter manually
 #?          ← type 2 and press Enter
 
@@ -118,7 +118,7 @@ Start position (default: 10000000): ← type your region start
 End position   (default: 15000000): ← type your region end
 ```
 
-> **Important:** Short-root pool must always be selected first. The Δ SNP-index direction depends on sample order.
+> **Important:** Mutant pool must always be selected first. The Δ SNP-index direction depends on sample order.
 
 ---
 
@@ -157,7 +157,7 @@ bsa_output/result/
 
 ## Important Notes
 
-- **Sample order matters:** Short-root pool must be **first**, long-root pool **second**. This determines the sign of Δ SNP-index.
+- **Sample order matters:** Mutant pool must be **first**, wild-type pool **second**. This determines the sign of Δ SNP-index.
 - **BQSR:** Requires a known-variants VCF. Leave `KNOWN_VCF` empty in `config.sh` to skip (minor impact on results).
 - **`annotate_mutations.py`** is an optional independent validation tool. For routine analysis, `extract_mutations.py` is sufficient.
 - **Don't know your target interval?** Set a broad range first (e.g. start=1, end=30000000), then narrow down based on the Δ SNP-index distribution in `all_variants_ratio.csv`.

@@ -133,10 +133,10 @@ data_setup_wizard() {
     echo "Please prepare your data in the following structure:"
     echo ""
     echo "  RawData/"
-    echo "  |-- short_root_pool_name/"
+    echo "  |-- mut_pool_name/"
     echo "  |   |-- *_1.fq.gz  (R1 file)"
     echo "  |   \`-- *_2.fq.gz  (R2 file)"
-    echo "  \`-- long_root_pool_name/"
+    echo "  \`-- wt_pool_name/"
     echo "      |-- *_1.fq.gz  (R1 file)"
     echo "      \`-- *_2.fq.gz  (R2 file)"
     echo ""
@@ -147,27 +147,27 @@ data_setup_wizard() {
         exit 1
     fi
 
-    print_info "Select the short-root pool folder:"
-    select short_dir in $(ls RawData/) "Enter manually"; do
-        [ "$short_dir" = "Enter manually" ] && read -p "Short-root pool folder name: " short_dir
+    print_info "Select the mutant pool folder:"
+    select mut_dir in $(ls RawData/) "Enter manually"; do
+        [ "$mut_dir" = "Enter manually" ] && read -p "Mutant pool folder name: " mut_dir
         break
     done
 
-    print_info "Select the long-root pool folder:"
-    select long_dir in $(ls RawData/) "Enter manually"; do
-        [ "$long_dir" = "Enter manually" ] && read -p "Long-root pool folder name: " long_dir
+    print_info "Select the wild-type pool folder:"
+    select wt_dir in $(ls RawData/) "Enter manually"; do
+        [ "$wt_dir" = "Enter manually" ] && read -p "Wild-type pool folder name: " wt_dir
         break
     done
 
-    short_r1=$(ls "RawData/$short_dir/"*_1.fq.gz 2>/dev/null | head -1 || true)
-    short_r2=$(ls "RawData/$short_dir/"*_2.fq.gz 2>/dev/null | head -1 || true)
-    long_r1=$(ls  "RawData/$long_dir/"*_1.fq.gz  2>/dev/null | head -1 || true)
-    long_r2=$(ls  "RawData/$long_dir/"*_2.fq.gz  2>/dev/null | head -1 || true)
+    mut_r1=$(ls "RawData/$mut_dir/"*_1.fq.gz 2>/dev/null | head -1 || true)
+    mut_r2=$(ls "RawData/$mut_dir/"*_2.fq.gz 2>/dev/null | head -1 || true)
+    wt_r1=$(ls  "RawData/$wt_dir/"*_1.fq.gz  2>/dev/null | head -1 || true)
+    wt_r2=$(ls  "RawData/$wt_dir/"*_2.fq.gz  2>/dev/null | head -1 || true)
 
-    for pair_name in "short_r1:RawData/$short_dir/*_1.fq.gz" \
-                     "short_r2:RawData/$short_dir/*_2.fq.gz" \
-                     "long_r1:RawData/$long_dir/*_1.fq.gz" \
-                     "long_r2:RawData/$long_dir/*_2.fq.gz"; do
+    for pair_name in "mut_r1:RawData/$mut_dir/*_1.fq.gz" \
+                     "mut_r2:RawData/$mut_dir/*_2.fq.gz" \
+                     "wt_r1:RawData/$wt_dir/*_1.fq.gz" \
+                     "wt_r2:RawData/$wt_dir/*_2.fq.gz"; do
         var_name="${pair_name%%:*}"
         pattern="${pair_name##*:}"
         val="${!var_name}"
@@ -178,14 +178,14 @@ data_setup_wizard() {
         fi
     done
 
-    update_config "$short_r1" "$short_r2" "$long_r1" "$long_r2"
+    update_config "$mut_r1" "$mut_r2" "$wt_r1" "$wt_r2"
 }
 
 # =============================================================================
 # Step 5: Write configuration file
 # =============================================================================
 update_config() {
-    local short_r1=$1 short_r2=$2 long_r1=$3 long_r2=$4
+    local mut_r1=$1 mut_r2=$2 wt_r1=$3 wt_r2=$4
     print_info "Writing configuration file..."
 
     echo ""
@@ -198,10 +198,10 @@ update_config() {
 # ===== User Configuration =====
 REF="./Arabidopsis_thaliana.TAIR10.dna.toplevel.fa"
 KNOWN_VCF=""
-SHORT_R1="$short_r1"
-SHORT_R2="$short_r2"
-LONG_R1="$long_r1"
-LONG_R2="$long_r2"
+MUT_R1="$mut_r1"
+MUT_R2="$mut_r2"
+WT_R1="$wt_r1"
+WT_R2="$wt_r2"
 FINE_CHR="$chr"
 FINE_START=$start
 FINE_END=$end
