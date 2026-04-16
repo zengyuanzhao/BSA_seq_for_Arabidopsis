@@ -35,7 +35,7 @@ echo ""
 
 # Check input files
 echo "Checking input files..."
-for f in "$SHORT_R1" "$SHORT_R2" "$LONG_R1" "$LONG_R2"; do
+for f in "$MUT_R1" "$MUT_R2" "$WT_R1" "$WT_R2"; do
     if [ ! -f "$f" ]; then
         echo "[MISSING] $f"
         exit 1
@@ -53,8 +53,8 @@ echo ""
 
 # Show current configuration
 echo "Analysis configuration:"
-echo "  Short-root pool R1: $SHORT_R1"
-echo "  Long-root pool  R1: $LONG_R1"
+echo "  Mutant pool R1:     $MUT_R1"
+echo "  Wild-type pool R1:  $WT_R1"
 echo "  Target region:      ${FINE_CHR}:${FINE_START}-${FINE_END}"
 echo "  Threads:            $THREADS"
 echo ""

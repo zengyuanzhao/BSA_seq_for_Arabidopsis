@@ -97,15 +97,17 @@ setup_environment() {
 # Step 3: Download the snpEff Arabidopsis database
 # =============================================================================
 setup_snpeff_database() {
-    print_info "Checking snpEff TAIR10 database..."
+    print_info "Checking snpEff Arabidopsis database..."
     _DB_LIST=$(snpEff databases 2>/dev/null || true)
-    AVAILABLE=$(echo "$_DB_LIST" | grep -i 'TAIR10' || true)
+    AVAILABLE=$(echo "$_DB_LIST" | grep -i '^Arabidopsis_thaliana' | head -1 || true)
     if [ -n "$AVAILABLE" ]; then
-        print_success "snpEff TAIR10 database already present:"
-        echo "$AVAILABLE"
+        print_success "snpEff Arabidopsis_thaliana database already present"
     else
-        print_info "Downloading TAIR10.31 database (~200 MB)..."
-        snpEff download TAIR10.31
+        print_info "Downloading Arabidopsis_thaliana database (~200 MB)..."
+        if ! snpEff download Arabidopsis_thaliana; then
+            print_error "Failed to download snpEff Arabidopsis_thaliana database."
+            exit 1
+        fi
         print_success "Database download complete"
     fi
 }
@@ -196,7 +198,7 @@ update_config() {
 
     cat > config.sh << EOF
 # ===== User Configuration =====
-REF="./Arabidopsis_thaliana.TAIR10.dna.toplevel.fa"
+REF="./reference/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa"
 KNOWN_VCF=""
 MUT_R1="$mut_r1"
 MUT_R2="$mut_r2"
@@ -217,16 +219,20 @@ EOF
 # =============================================================================
 check_reference() {
     print_info "Checking reference genome..."
-    REF_FILE="Arabidopsis_thaliana.TAIR10.dna.toplevel.fa"
+    mkdir -p reference
+    REF_FILE="reference/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa"
 
     if [ ! -f "$REF_FILE" ]; then
         print_warn "Reference genome not found: $REF_FILE"
-        print_info "Download it with:"
-        echo "  wget ftp://ftp.ensemblgenomes.org/pub/plants/release-54/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz"
-        echo "  gunzip Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz"
-        exit 1
+        print_info "Auto-downloading from Ensembl Plants..."
+        wget -q --show-progress \
+            ftp://ftp.ensemblgenomes.org/pub/plants/release-54/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz \
+            -O reference/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
+        gunzip reference/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
+        print_success "Reference genome downloaded and ready"
+    else
+        print_success "Reference genome ready"
     fi
-    print_success "Reference genome ready"
 }
 
 # =============================================================================
@@ -242,6 +248,7 @@ run_pipeline() {
         read -p "Old results directory bsa_output/ detected. Delete it? (y/n): " clean_old
         if [ "$clean_old" = "y" ] || [ "$clean_old" = "Y" ]; then
             rm -rf bsa_output/
+            rm -f run.log
             print_success "Old results removed"
         fi
     fi

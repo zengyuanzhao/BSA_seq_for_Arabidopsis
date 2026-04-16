@@ -175,14 +175,18 @@ tabix "${OUTDIR}/vcf/region_variants.vcf.gz"
 _DB_LIST=$(snpEff databases 2>/dev/null || true)
 SNPEFF_DB=$(echo "${_DB_LIST}" | grep -i 'TAIR10' | head -1 | awk '{print $1}' || true)
 if [ -z "${SNPEFF_DB}" ]; then
-    echo "  TAIR10 database not found locally, attempting download..."
-    if ! snpEff download TAIR10.31; then
-        echo "[ERROR] Failed to download TAIR10.31 database."
-        echo "        Please check your network connection, or manually run:"
-        echo "            snpEff download TAIR10.31"
-        exit 1
+    echo "  TAIR10 database not found locally, checking for Arabidopsis_thaliana..."
+    SNPEFF_DB=$(echo "${_DB_LIST}" | grep -i '^Arabidopsis_thaliana' | head -1 | awk '{print $1}' || true)
+    if [ -z "${SNPEFF_DB}" ]; then
+        echo "  Arabidopsis_thaliana database not found locally, attempting download..."
+        if ! snpEff download Arabidopsis_thaliana; then
+            echo "[ERROR] Failed to download Arabidopsis_thaliana database."
+            echo "        Please check your network connection, or manually run:"
+            echo "            snpEff download Arabidopsis_thaliana"
+            exit 1
+        fi
+        SNPEFF_DB="Arabidopsis_thaliana"
     fi
-    SNPEFF_DB="TAIR10.31"
 fi
 echo "  Using database: ${SNPEFF_DB}"
 
