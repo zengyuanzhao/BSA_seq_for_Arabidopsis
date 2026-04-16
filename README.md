@@ -43,7 +43,7 @@ Raw FASTQ (mut pool + wt pool)
 
 ## Before You Start
 
-Two things must be prepared **manually** before running any script:
+Only one thing must be prepared **manually** before running any script:
 
 ### 1. Organise your FASTQ files
 
@@ -59,14 +59,13 @@ RawData/
 
 > File names must end with `_1.fq.gz` (R1) and `_2.fq.gz` (R2).
 
-### 2. Download the reference genome (one-time, ~120 MB)
+### 2. Reference genome (auto-downloaded)
 
-```bash
-wget ftp://ftp.ensemblgenomes.org/pub/plants/release-54/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
-gunzip Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
+The `setup_and_run.sh` script will automatically create a `reference/` folder and download the TAIR10 genome if it is not already present. You can also place the file manually at:
+
 ```
-
-Place the `.fa` file in the same directory as the scripts.
+reference/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa
+```
 
 ---
 
@@ -81,10 +80,11 @@ bash setup_and_run.sh
 The script will:
 1. Automatically install conda/micromamba (if not present)
 2. Create the `BSA_seq` environment and install all required tools
-3. Download the snpEff Arabidopsis database
-4. Prompt you to **select your mutant and wild-type pool folders**
-5. Prompt you to **enter the candidate chromosomal interval** (e.g. Chr1: 10,000,000 – 15,000,000)
-6. Launch the full pipeline in the background
+3. Download the snpEff `Arabidopsis_thaliana` database
+4. Create a `reference/` folder and download the TAIR10 genome (if missing)
+5. Prompt you to **select your mutant and wild-type pool folders**
+6. Prompt you to **enter the candidate chromosomal interval** (e.g. Chr1: 10,000,000 – 15,000,000)
+7. Launch the full pipeline in the background
 
 > The interactive prompts take less than 1 minute. The analysis itself takes ~2–4 hours.
 
@@ -152,6 +152,7 @@ bsa_output/result/
 | `calc_ratio.py` | Δ SNP-index calculation and candidate site filtering |
 | `extract_mutations.py` | Extract and classify mutations from snpEff-annotated VCF |
 | `annotate_mutations.py` | Optional: custom GFF+FASTA annotation for independent validation |
+| `.gitignore` | Excludes large data and output files from version control |
 
 ---
 
@@ -161,3 +162,4 @@ bsa_output/result/
 - **BQSR:** Requires a known-variants VCF. Leave `KNOWN_VCF` empty in `config.sh` to skip (minor impact on results).
 - **`annotate_mutations.py`** is an optional independent validation tool. For routine analysis, `extract_mutations.py` is sufficient.
 - **Don't know your target interval?** Set a broad range first (e.g. start=1, end=30000000), then narrow down based on the Δ SNP-index distribution in `all_variants_ratio.csv`.
+- **Large files are ignored by Git:** `RawData/`, `reference/`, `bsa_output/` and `run.log` are listed in `.gitignore` and will not be pushed to the repository.
