@@ -13,22 +13,51 @@ fi
 source config.sh
 
 # ---- Validate required config variables ----
-for var in MUT_R1 MUT_R2 WT_R1 WT_R2; do
-    if [[ -z "${!var}" ]]; then
+for var in REF MUT_R1 MUT_R2 WT_R1 WT_R2 FINE_CHR FINE_START FINE_END THREADS OUTDIR; do
+    if [[ -z "${!var:-}" ]]; then
         echo "[ERROR] ${var} is not set in config.sh. Please fill in your FASTQ file paths."
         exit 1
     fi
 done
 
+for var in REF MUT_R1 MUT_R2 WT_R1 WT_R2; do
+    if [[ ! -f "${!var}" ]]; then
+        echo "[ERROR] ${var} file not found: ${!var}"
+        exit 1
+    fi
+done
+
+if [[ -n "${KNOWN_VCF:-}" && ! -f "${KNOWN_VCF}" ]]; then
+    echo "[ERROR] KNOWN_VCF is set but the file was not found: ${KNOWN_VCF}"
+    exit 1
+fi
+
 mkdir -p "${OUTDIR}/qc" "${OUTDIR}/bam" "${OUTDIR}/vcf" "${OUTDIR}/result"
 LOG="${OUTDIR}/pipeline.log"
 exec > >(tee -a "${LOG}") 2>&1
+
+check_dependencies() {
+    local missing=()
+    local cmd
+    for cmd in trimmomatic bwa samtools gatk snpEff tabix bgzip python3; do
+        if ! command -v "${cmd}" >/dev/null 2>&1; then
+            missing+=("${cmd}")
+        fi
+    done
+    if (( ${#missing[@]} > 0 )); then
+        echo "[ERROR] Missing required command(s): ${missing[*]}"
+        echo "        Activate the BSA_seq environment or rerun setup_and_run.sh."
+        exit 1
+    fi
+}
 
 echo "====== [$(date)] Pipeline started ======"
 echo "  Mutant pool: ${MUT_R1}"
 echo "  WT pool:     ${WT_R1}"
 echo "  Target region:   ${FINE_CHR}:${FINE_START}-${FINE_END}"
 echo ""
+
+check_dependencies
 
 # ---- Check and build reference genome indices ----
 echo "[Prep] Checking reference genome indices..."
@@ -63,8 +92,8 @@ for SAMPLE in mut wt; do
     else
         IN1=${WT_R1};  IN2=${WT_R2}
     fi
-    trimmomatic PE -threads ${THREADS} ${IN1} ${IN2} \
-        ${R1} ${UNPAIRED_R1} ${R2} ${UNPAIRED_R2} \
+    trimmomatic PE -threads "${THREADS}" "${IN1}" "${IN2}" \
+        "${R1}" "${UNPAIRED_R1}" "${R2}" "${UNPAIRED_R2}" \
         ILLUMINACLIP:TruSeq3-PE.fa:2:30:10 LEADING:3 TRAILING:3 \
         SLIDINGWINDOW:4:15 MINLEN:36
 done
@@ -81,10 +110,10 @@ fi
 for SAMPLE in mut wt; do
     R1="${OUTDIR}/qc/${SAMPLE}_1.fq.gz"
     R2="${OUTDIR}/qc/${SAMPLE}_2.fq.gz"
-    bwa mem -t ${THREADS} \
+    bwa mem -t "${THREADS}" \
         -R "@RG\tID:${SAMPLE}\tSM:${SAMPLE}\tPL:ILLUMINA" \
-        "${REF}" ${R1} ${R2} | \
-        samtools sort -@ ${THREADS} -o "${OUTDIR}/bam/${SAMPLE}_sorted.bam"
+        "${REF}" "${R1}" "${R2}" | \
+        samtools sort -@ "${THREADS}" -o "${OUTDIR}/bam/${SAMPLE}_sorted.bam"
     samtools index "${OUTDIR}/bam/${SAMPLE}_sorted.bam"
 done
 
@@ -109,7 +138,7 @@ for SAMPLE in mut wt; do
         samtools index "${RECAL}"
     else
         echo "  Skipping BQSR (KNOWN_VCF not set)"
-        (cd "${OUTDIR}/bam" && ln -sf "$(basename ${MKDUP})" "$(basename ${RECAL})")
+        (cd "${OUTDIR}/bam" && ln -sf "$(basename "${MKDUP}")" "$(basename "${RECAL}")")
         samtools index "${RECAL}"
     fi
 done
@@ -165,18 +194,13 @@ python3 calc_ratio.py \
     --end   "${FINE_END}" \
     --outdir "${OUTDIR}/result"
 
-# ---- Step 7: snpEff annotation (fine-mapping region only) ----
-echo "[Step 7] snpEff variant annotation (region: ${FINE_CHR}:${FINE_START}-${FINE_END})..."
-bcftools view -r "${FINE_CHR}:${FINE_START}-${FINE_END}" \
-    "${OUTDIR}/vcf/final_variants.vcf.gz" \
-    -O z -o "${OUTDIR}/vcf/region_variants.vcf.gz"
-tabix "${OUTDIR}/vcf/region_variants.vcf.gz"
-
+# ---- Step 7: snpEff annotation (whole genome) ----
+echo "[Step 7] snpEff variant annotation (whole genome)..."
 _DB_LIST=$(snpEff databases 2>/dev/null || true)
-SNPEFF_DB=$(echo "${_DB_LIST}" | grep -i 'TAIR10' | head -1 | awk '{print $1}' || true)
+SNPEFF_DB=$(echo "${_DB_LIST}" | awk '$1 == "Arabidopsis_thaliana" {print $1; exit}' || true)
 if [ -z "${SNPEFF_DB}" ]; then
-    echo "  TAIR10 database not found locally, checking for Arabidopsis_thaliana..."
-    SNPEFF_DB=$(echo "${_DB_LIST}" | grep -i '^Arabidopsis_thaliana' | head -1 | awk '{print $1}' || true)
+    echo "  Arabidopsis_thaliana database not listed, checking non-test TAIR10 entries..."
+    SNPEFF_DB=$(echo "${_DB_LIST}" | awk 'tolower($0) ~ /tair10/ && $1 !~ /^test/ {print $1; exit}' || true)
     if [ -z "${SNPEFF_DB}" ]; then
         echo "  Arabidopsis_thaliana database not found locally, attempting download..."
         if ! snpEff download Arabidopsis_thaliana; then
@@ -193,7 +217,7 @@ echo "  Using database: ${SNPEFF_DB}"
 snpEff ann -v \
     -stats "${OUTDIR}/result/snpEff_stats.html" \
     "${SNPEFF_DB}" \
-    "${OUTDIR}/vcf/region_variants.vcf.gz" \
+    "${OUTDIR}/vcf/final_variants.vcf.gz" \
     > "${OUTDIR}/vcf/annotated_variants.vcf" 2>> "${LOG}"
 
 bgzip -f "${OUTDIR}/vcf/annotated_variants.vcf"
@@ -204,7 +228,8 @@ echo "  Done: snpEff annotation complete"
 echo "[Step 8] Extracting and classifying mutations..."
 python3 extract_mutations.py \
     "${OUTDIR}/vcf/annotated_variants.vcf.gz" \
-    "${OUTDIR}/result"
+    "${OUTDIR}/result" \
+    "${OUTDIR}/result/candidate_mutations.csv"
 
 echo ""
 echo "====== [$(date)] Pipeline complete! Results in ${OUTDIR}/result/ ======"

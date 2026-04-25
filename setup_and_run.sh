@@ -26,15 +26,21 @@ setup_package_manager() {
 
     if command -v micromamba &> /dev/null; then
         print_success "Found micromamba"
-        PKG_MGR="micromamba"; return 0
+        PKG_MGR="micromamba"
+        PKG_MGR_BIN="$(command -v micromamba)"
+        return 0
     fi
     if command -v mamba &> /dev/null; then
         print_success "Found mamba"
-        PKG_MGR="mamba"; return 0
+        PKG_MGR="mamba"
+        PKG_MGR_BIN="$(command -v mamba)"
+        return 0
     fi
     if command -v conda &> /dev/null; then
         print_success "Found conda"
-        PKG_MGR="conda"; return 0
+        PKG_MGR="conda"
+        PKG_MGR_BIN="$(command -v conda)"
+        return 0
     fi
 
     print_warn "No conda/mamba/micromamba detected. Installing micromamba..."
@@ -54,6 +60,7 @@ setup_package_manager() {
     export PATH="$HOME/.local/bin:$PATH"
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
     PKG_MGR="micromamba"
+    PKG_MGR_BIN="$HOME/.local/bin/micromamba"
     print_success "micromamba installed successfully"
 }
 
@@ -67,27 +74,27 @@ setup_environment() {
     if [ "$PKG_MGR" = "micromamba" ]; then
         if [ ! -f "$HOME/.bashrc" ] || ! grep -q "micromamba" "$HOME/.bashrc"; then
             print_info "Initializing micromamba shell..."
-            "$HOME/.local/bin/micromamba" shell init -s bash
+            "$PKG_MGR_BIN" shell init -s bash
         fi
-        eval "$("$HOME/.local/bin/micromamba" shell hook --shell bash)"
+        eval "$("$PKG_MGR_BIN" shell hook --shell bash)"
 
-        if ! micromamba env list | grep -q "$ENV_NAME"; then
+        if ! "$PKG_MGR_BIN" env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
             print_info "Creating environment: $ENV_NAME"
-            micromamba create -n "$ENV_NAME" -y
+            "$PKG_MGR_BIN" create -n "$ENV_NAME" -y
         fi
         micromamba activate "$ENV_NAME"
         print_info "Installing bioinformatics tools (this may take 10-20 minutes)..."
         micromamba install -c bioconda -c conda-forge -y \
             trimmomatic bwa samtools gatk4 snpeff python pandas tabix bcftools
     else
-        if ! $PKG_MGR env list | grep -q "$ENV_NAME"; then
+        if ! "$PKG_MGR_BIN" env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
             print_info "Creating environment: $ENV_NAME"
-            $PKG_MGR create -n "$ENV_NAME" -y
+            "$PKG_MGR_BIN" create -n "$ENV_NAME" -y
         fi
-        source "$($PKG_MGR info --base)/etc/profile.d/conda.sh"
-        $PKG_MGR activate "$ENV_NAME"
+        source "$("$PKG_MGR_BIN" info --base)/etc/profile.d/conda.sh"
+        conda activate "$ENV_NAME"
         print_info "Installing bioinformatics tools (this may take 10-20 minutes)..."
-        $PKG_MGR install -c bioconda -c conda-forge -y \
+        "$PKG_MGR_BIN" install -c bioconda -c conda-forge -y \
             trimmomatic bwa samtools gatk4 snpeff python pandas tabix bcftools
     fi
     print_success "Environment ready"
@@ -99,7 +106,7 @@ setup_environment() {
 setup_snpeff_database() {
     print_info "Checking snpEff Arabidopsis database..."
     _DB_LIST=$(snpEff databases 2>/dev/null || true)
-    AVAILABLE=$(echo "$_DB_LIST" | grep -i '^Arabidopsis_thaliana' | head -1 || true)
+    AVAILABLE=$(echo "$_DB_LIST" | awk '$1 == "Arabidopsis_thaliana" {print $1; exit}' || true)
     if [ -n "$AVAILABLE" ]; then
         print_success "snpEff Arabidopsis_thaliana database already present"
     else
@@ -127,8 +134,11 @@ data_setup_wizard() {
         echo ""
         read -p "Use existing data? (y/n): " use_existing
         if [ "$use_existing" = "y" ] || [ "$use_existing" = "Y" ]; then
-            source config.sh
-            return 0
+            if [ -f "config.sh" ]; then
+                source config.sh
+                return 0
+            fi
+            print_warn "config.sh not found, continuing with the setup wizard."
         fi
     fi
 

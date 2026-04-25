@@ -3,8 +3,8 @@ RawData/
 reference/
 
 # Analysis outputs
-bsa_output/
-run.log
+bsa_output*/
+run*.log
 
 # Python
 __pycache__/

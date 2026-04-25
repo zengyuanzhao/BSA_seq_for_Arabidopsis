@@ -33,6 +33,19 @@ source config.sh
 echo "[OK] Environment activated"
 echo ""
 
+# Check required commands before launching a long background job
+missing_cmds=()
+for cmd in trimmomatic bwa samtools gatk snpEff tabix bgzip python3; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        missing_cmds+=("$cmd")
+    fi
+done
+if (( ${#missing_cmds[@]} > 0 )); then
+    echo "Error: missing required command(s): ${missing_cmds[*]}"
+    echo "Please rerun: bash setup_and_run.sh"
+    exit 1
+fi
+
 # Check input files
 echo "Checking input files..."
 for f in "$MUT_R1" "$MUT_R2" "$WT_R1" "$WT_R2"; do

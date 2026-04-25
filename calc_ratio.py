@@ -23,6 +23,10 @@ parser.add_argument("--start",  type=int, required=True, help="Region start posi
 parser.add_argument("--end",    type=int, required=True, help="Region end position")
 parser.add_argument("--delta",  type=float, default=0.3,
                     help="Delta-SNP-index threshold (|mut_ratio - wt_ratio| > this value), default 0.3")
+parser.add_argument("--direction", choices=["both", "positive", "negative"], default="both",
+                    help=("Candidate direction: both keeps |delta| sites, positive keeps "
+                          "mut_ratio - wt_ratio > threshold, negative keeps the opposite. "
+                          "Default: both"))
 parser.add_argument("--min_dp", type=int, default=10,
                     help="Minimum sequencing depth filter (must be >= 1), default 10")
 parser.add_argument("--outdir", default="./result", help="Output directory")
@@ -99,34 +103,63 @@ with opener(args.vcf, "rt") as f:
             records.append(row)
 
 df = pd.DataFrame(records)
+output_columns = [
+    "CHROM", "POS", "REF", "ALT",
+    "mut_ratio", "mut_dp", "wt_ratio", "wt_dp", "delta_index",
+]
 
 if df.empty:
     print("WARNING: No valid variant sites found. "
           "Check your VCF file, filter settings, and --min_dp threshold.")
-    df.to_csv(f"{args.outdir}/all_variants_ratio.csv", index=False)
-    df.to_csv(f"{args.outdir}/candidate_mutations.csv", index=False)
+    empty_df = pd.DataFrame(columns=output_columns)
+    empty_df.to_csv(f"{args.outdir}/all_variants_ratio.csv", index=False)
+    empty_df.to_csv(f"{args.outdir}/candidate_mutations.csv", index=False)
+    empty_df.to_csv(f"{args.outdir}/candidate_positive_mutations.csv", index=False)
+    empty_df.to_csv(f"{args.outdir}/candidate_negative_mutations.csv", index=False)
     sys.exit(0)
-
-df.to_csv(f"{args.outdir}/all_variants_ratio.csv", index=False)
-print(f"Total valid variant sites: {len(df)}")
 
 if "mut_ratio" not in df.columns or "wt_ratio" not in df.columns:
     print("WARNING: 'mut_ratio' or 'wt_ratio' column not found. "
           "Check that VCF sample order is: mut pool first, wt pool second.")
+    df.to_csv(f"{args.outdir}/all_variants_ratio.csv", index=False)
+    pd.DataFrame(columns=output_columns).to_csv(f"{args.outdir}/candidate_mutations.csv", index=False)
+    pd.DataFrame(columns=output_columns).to_csv(f"{args.outdir}/candidate_positive_mutations.csv", index=False)
+    pd.DataFrame(columns=output_columns).to_csv(f"{args.outdir}/candidate_negative_mutations.csv", index=False)
 else:
-    df["delta_index"] = df["mut_ratio"] - df["wt_ratio"]
+    df["delta_index"] = (df["mut_ratio"] - df["wt_ratio"]).round(4)
+    df.to_csv(f"{args.outdir}/all_variants_ratio.csv", index=False)
+    print(f"Total valid variant sites: {len(df)}")
 
-    mask = (
+    region_mask = (
         (df["CHROM"].apply(normalize_chrom) == target_chrom) &
         (df["POS"] >= args.start) &
-        (df["POS"] <= args.end) &
-        (df["delta_index"].abs() > args.delta)
+        (df["POS"] <= args.end)
     )
 
-    candidates = df[mask].sort_values("delta_index", key=lambda x: x.abs(), ascending=False)
+    positive = df[region_mask & (df["delta_index"] > args.delta)].sort_values(
+        "delta_index", ascending=False
+    )
+    negative = df[region_mask & (df["delta_index"] < -args.delta)].sort_values(
+        "delta_index", ascending=True
+    )
+    positive.to_csv(f"{args.outdir}/candidate_positive_mutations.csv", index=False)
+    negative.to_csv(f"{args.outdir}/candidate_negative_mutations.csv", index=False)
+
+    if args.direction == "positive":
+        candidates = positive
+    elif args.direction == "negative":
+        candidates = negative
+    else:
+        candidates = df[
+            region_mask & (df["delta_index"].abs() > args.delta)
+        ].sort_values("delta_index", key=lambda x: x.abs(), ascending=False)
+
     candidates.to_csv(f"{args.outdir}/candidate_mutations.csv", index=False)
     print(
         f"Candidate variant sites "
-        f"({args.chr}:{args.start}-{args.end}, |delta-SNP-index| > {args.delta}): "
+        f"({args.chr}:{args.start}-{args.end}, direction={args.direction}, "
+        f"threshold={args.delta}): "
         f"{len(candidates)}"
     )
+    print(f"  positive candidates: {len(positive)}")
+    print(f"  negative candidates: {len(negative)}")
